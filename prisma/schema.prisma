@@ -1,0 +1,577 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+
+// ==============================================================
+// ENUMS
+// ==============================================================
+
+enum Role {
+  DONOR
+  CAMPAIGNER
+  ADMIN
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_REVIEW
+  ACTIVE
+  COMPLETED
+  REJECTED
+  SUSPENDED
+}
+
+enum CampaignCategory {
+  KESEHATAN
+  PENDIDIKAN
+  BENCANA_ALAM
+  KEMANUSIAAN
+  HEWAN
+  LINGKUNGAN
+  SOSIAL
+  LAINNYA
+}
+
+enum DonationStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  MIDTRANS
+  XENDIT
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CREDIT_CARD
+  EWALLET_GOPAY
+  EWALLET_OVO
+  EWALLET_DANA
+  EWALLET_SHOPEEPAY
+  QRIS
+  INDOMARET
+  ALFAMART
+}
+
+enum WithdrawalStatus {
+  REQUESTED
+  UNDER_REVIEW
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+}
+
+enum BadgeTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+}
+
+enum NotificationType {
+  DONATION_RECEIVED
+  CAMPAIGN_APPROVED
+  CAMPAIGN_REJECTED
+  CAMPAIGN_MILESTONE
+  WITHDRAWAL_UPDATE
+  BADGE_EARNED
+  COMMENT_REPLY
+  SYSTEM
+}
+
+// ==============================================================
+// USER & AUTH
+// ==============================================================
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  emailVerifiedAt   DateTime?
+  phone             String?   @unique
+  phoneVerifiedAt   DateTime?
+  passwordHash      String
+  role              Role      @default(DONOR)
+  isActive          Boolean   @default(true)
+  isBanned          Boolean   @default(false)
+  bannedReason      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  profile           UserProfile?
+  campaigns         Campaign[]
+  donations         Donation[]
+  withdrawals       Withdrawal[]
+  comments          Comment[]
+  commentLikes      CommentLike[]
+  campaignLikes     CampaignLike[]
+  campaignShares    CampaignShare[]
+  notifications     Notification[]
+  userBadges        UserBadge[]
+  adminActions      AdminAction[]   @relation("AdminActions")
+  targetedActions   AdminAction[]   @relation("TargetedUser")
+  refreshTokens     RefreshToken[]
+  oauthAccounts     OAuthAccount[]
+
+  @@index([email])
+  @@index([role])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  fullName    String
+  avatarUrl   String?
+  bio         String?
+  city        String?
+  province    String?
+  country     String   @default("ID")
+  // KTP / identity untuk campaigner
+  ktpNumber   String?  @unique
+  ktpImageUrl String?
+  isVerified  Boolean  @default(false) // verified identity
+  totalDonated  Decimal @default(0) @db.Decimal(15, 2)
+  donationCount Int     @default(0)
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model OAuthAccount {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String   // "google" | "facebook"
+  providerUid  String
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUid])
+  @@map("oauth_accounts")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ==============================================================
+// CAMPAIGN
+// ==============================================================
+
+model Campaign {
+  id              String           @id @default(cuid())
+  userId          String
+  slug            String           @unique
+  title           String
+  shortDesc       String           @db.VarChar(300)
+  description     String           @db.Text
+  coverImageUrl   String?
+  category        CampaignCategory
+  status          CampaignStatus   @default(DRAFT)
+  targetAmount    Decimal          @db.Decimal(15, 2)
+  currentAmount   Decimal          @default(0) @db.Decimal(15, 2)
+  donorCount      Int              @default(0)
+  deadlineAt      DateTime?
+  isUrgent        Boolean          @default(false)
+  isFeatured      Boolean          @default(false)
+  // Rejection / suspension reason dari admin
+  adminNote       String?
+  // Bank account tujuan withdrawal milik campaigner
+  bankAccountId   String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  publishedAt     DateTime?
+  completedAt     DateTime?
+
+  // Relations
+  user            User             @relation(fields: [userId], references: [id])
+  bankAccount     BankAccount?     @relation(fields: [bankAccountId], references: [id])
+  images          CampaignImage[]
+  donations       Donation[]
+  updates         CampaignUpdate[]
+  comments        Comment[]
+  likes           CampaignLike[]
+  shares          CampaignShare[]
+  withdrawals     Withdrawal[]
+  milestones      CampaignMilestone[]
+  tags            CampaignTag[]
+  reviews         CampaignReview[]
+
+  @@index([status])
+  @@index([category])
+  @@index([userId])
+  @@index([isFeatured, status])
+  @@index([createdAt])
+  @@map("campaigns")
+}
+
+model CampaignImage {
+  id         String   @id @default(cuid())
+  campaignId String
+  url        String
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_images")
+}
+
+model CampaignMilestone {
+  id          String   @id @default(cuid())
+  campaignId  String
+  title       String
+  targetAmount Decimal @db.Decimal(15, 2)
+  reachedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_milestones")
+}
+
+model CampaignUpdate {
+  id          String   @id @default(cuid())
+  campaignId  String
+  title       String
+  content     String   @db.Text
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  comments    Comment[]
+
+  @@map("campaign_updates")
+}
+
+model CampaignLike {
+  userId     String
+  campaignId String
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@id([userId, campaignId])
+  @@map("campaign_likes")
+}
+
+model CampaignShare {
+  id         String   @id @default(cuid())
+  userId     String?
+  campaignId String
+  platform   String   // "whatsapp" | "twitter" | "facebook" | "copy_link"
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_shares")
+}
+
+model Tag {
+  id       String        @id @default(cuid())
+  name     String        @unique
+  slug     String        @unique
+  campaigns CampaignTag[]
+
+  @@map("tags")
+}
+
+model CampaignTag {
+  campaignId String
+  tagId      String
+
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, tagId])
+  @@map("campaign_tags")
+}
+
+// Review admin sebelum campaign live
+model CampaignReview {
+  id          String         @id @default(cuid())
+  campaignId  String
+  adminId     String
+  status      CampaignStatus // ACTIVE | REJECTED | SUSPENDED
+  note        String?
+  reviewedAt  DateTime       @default(now())
+
+  campaign    Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_reviews")
+}
+
+// ==============================================================
+// DONATION & PAYMENT
+// ==============================================================
+
+model Donation {
+  id              String         @id @default(cuid())
+  campaignId      String
+  userId          String?        // null = anonim
+  amount          Decimal        @db.Decimal(15, 2)
+  platformFee     Decimal        @default(0) @db.Decimal(15, 2) // potongan platform
+  netAmount       Decimal        @db.Decimal(15, 2)             // amount - fee
+  isAnonymous     Boolean        @default(false)
+  message         String?        @db.VarChar(500)
+  status          DonationStatus @default(PENDING)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  paidAt          DateTime?
+
+  // Relations
+  campaign        Campaign       @relation(fields: [campaignId], references: [id])
+  user            User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payment         Payment?
+
+  @@index([campaignId, status])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("donations")
+}
+
+model Payment {
+  id                  String          @id @default(cuid())
+  donationId          String          @unique
+  provider            PaymentProvider
+  method              PaymentMethod?
+  externalId          String          @unique // ID dari Midtrans/Xendit
+  externalOrderId     String?         // order_id kita yang dikirim ke gateway
+  amount              Decimal         @db.Decimal(15, 2)
+  currency            String          @default("IDR")
+  status              DonationStatus  @default(PENDING)
+  paymentUrl          String?         // redirect URL untuk pembayaran
+  expiresAt           DateTime?
+  paidAt              DateTime?
+  failedReason        String?
+  rawResponse         Json?           // simpan raw webhook response
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  donation            Donation        @relation(fields: [donationId], references: [id], onDelete: Cascade)
+
+  @@index([externalId])
+  @@index([status])
+  @@map("payments")
+}
+
+// ==============================================================
+// WITHDRAWAL (Pencairan Dana)
+// ==============================================================
+
+model BankAccount {
+  id            String       @id @default(cuid())
+  userId        String
+  bankCode      String       // "BCA" | "BNI" | "BRI" | "MANDIRI" dll
+  bankName      String
+  accountNumber String
+  accountName   String
+  isVerified    Boolean      @default(false)
+  isPrimary     Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+
+  // Relations
+  withdrawals   Withdrawal[]
+  campaigns     Campaign[]
+
+  @@index([userId])
+  @@map("bank_accounts")
+}
+
+model Withdrawal {
+  id              String           @id @default(cuid())
+  campaignId      String
+  userId          String
+  bankAccountId   String
+  requestedAmount Decimal          @db.Decimal(15, 2)
+  approvedAmount  Decimal?         @db.Decimal(15, 2)
+  adminFee        Decimal          @default(0) @db.Decimal(15, 2)
+  status          WithdrawalStatus @default(REQUESTED)
+  note            String?          // catatan campaigner
+  adminNote       String?          // catatan admin
+  processedBy     String?          // adminId
+  requestedAt     DateTime         @default(now())
+  reviewedAt      DateTime?
+  completedAt     DateTime?
+  externalTxId    String?          // ID dari bank / payment provider
+
+  campaign        Campaign         @relation(fields: [campaignId], references: [id])
+  user            User             @relation(fields: [userId], references: [id])
+  bankAccount     BankAccount      @relation(fields: [bankAccountId], references: [id])
+
+  @@index([campaignId])
+  @@index([userId])
+  @@index([status])
+  @@map("withdrawals")
+}
+
+// ==============================================================
+// KOMENTAR
+// ==============================================================
+
+model Comment {
+  id               String          @id @default(cuid())
+  userId           String
+  campaignId       String?
+  campaignUpdateId String?
+  parentId         String?         // untuk reply / threaded comments
+  content          String          @db.VarChar(2000)
+  isEdited         Boolean         @default(false)
+  isHidden         Boolean         @default(false) // hidden by admin
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Relations
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign         Campaign?       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignUpdate   CampaignUpdate? @relation(fields: [campaignUpdateId], references: [id], onDelete: Cascade)
+  parent           Comment?        @relation("CommentReplies", fields: [parentId], references: [id])
+  replies          Comment[]       @relation("CommentReplies")
+  likes            CommentLike[]
+
+  @@index([campaignId])
+  @@index([userId])
+  @@map("comments")
+}
+
+model CommentLike {
+  userId    String
+  commentId String
+  createdAt DateTime @default(now())
+
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([userId, commentId])
+  @@map("comment_likes")
+}
+
+// ==============================================================
+// BADGE & GAMIFIKASI
+// ==============================================================
+
+model Badge {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  slug        String      @unique
+  description String
+  iconUrl     String?
+  tier        BadgeTier
+  // Kriteria otomatis — bisa null jika badge manual dari admin
+  minDonations Int?       // jumlah donasi minimum
+  minAmount    Decimal?   @db.Decimal(15, 2) // total donasi minimum
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+
+  userBadges  UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeId   String
+  earnedAt  DateTime @default(now())
+  // Badge mana yang sedang dipajang di profil
+  isDisplayed Boolean @default(false)
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge     Badge    @relation(fields: [badgeId], references: [id])
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+// ==============================================================
+// NOTIFIKASI
+// ==============================================================
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  isRead    Boolean          @default(false)
+  metadata  Json?            // extra data: campaignId, badgeId, dll
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ==============================================================
+// ADMIN
+// ==============================================================
+
+model AdminAction {
+  id          String   @id @default(cuid())
+  adminId     String
+  targetUserId String?
+  action      String   // "BAN_USER" | "APPROVE_CAMPAIGN" | "REJECT_CAMPAIGN" dll
+  reason      String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  admin       User     @relation("AdminActions", fields: [adminId], references: [id])
+  targetUser  User?    @relation("TargetedUser", fields: [targetUserId], references: [id])
+
+  @@index([adminId])
+  @@index([createdAt])
+  @@map("admin_actions")
+}
+
+// Platform fee config (bisa diubah via admin panel)
+model PlatformConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_configs")
+}
