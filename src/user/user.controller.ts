@@ -12,9 +12,9 @@ import {
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { QueryGlobal } from 'src/common/dto/query.dto';
-import { Auth } from 'src/auth/decorators/auth.decorator';
-import { role } from 'src/common/config/role.config';
+import { QueryGlobal } from '../common/dto/query.dto';
+import { Auth } from '../auth/decorators/auth.decorator';
+import { role } from '../common/config/role.config';
 
 @Controller('user')
 @Auth(role.admin)
