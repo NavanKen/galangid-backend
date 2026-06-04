@@ -12,7 +12,6 @@ datasource db {
 }
 
 
-
 // ==============================================================
 // ENUMS
 // ==============================================================
@@ -130,6 +129,7 @@ model User {
   refreshTokens     RefreshToken[]
   oauthAccounts     OAuthAccount[]
 
+
   @@index([email])
   @@index([role])
   @@index([createdAt])
@@ -151,6 +151,7 @@ model UserProfile {
   isVerified  Boolean  @default(false) // verified identity
   totalDonated  Decimal @default(0) @db.Decimal(15, 2)
   donationCount Int     @default(0)
+  createdAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)

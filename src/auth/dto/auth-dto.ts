@@ -7,7 +7,7 @@ export const registerSchema = z.object({
   }),
 
   username: z
-    .string()
+    .string({ error: 'Username Wajib Diisi' })
     .min(3, {
       message: 'Username minimal 3 karakter',
     })
@@ -19,7 +19,7 @@ export const registerSchema = z.object({
     }),
 
   displayName: z
-    .string()
+    .string({ error: 'Nama Wajib Diisi' })
     .min(2, {
       message: 'Nama minimal 2 karakter',
     })
@@ -28,7 +28,7 @@ export const registerSchema = z.object({
     }),
 
   password: z
-    .string()
+    .string({ error: 'Password Wajib Diisi' })
     .min(8, {
       message: 'Password minimal 8 karakter',
     })

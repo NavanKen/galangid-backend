@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -31,6 +32,10 @@ export class AuthService {
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Password Salah');
+    }
+
+    if (user.isBanned) {
+      throw new ForbiddenException(`Akun kamu dibanned. Hubungi support.`);
     }
 
     const payload = {
