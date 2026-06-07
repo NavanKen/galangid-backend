@@ -1,14 +1,21 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
-import { QueryCampaignDto } from './dto/query-campaign.dto';
+import {
+  QueryCampaignDto,
+  QueryCampaignReviewDto,
+} from './dto/query-campaign.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { buildPagination } from 'src/common/utils/pagination';
+import { Campaign } from '@prisma/client';
+import { CampaignStatus } from '@prisma/client';
+import { RejectedCampaignDto } from './dto/admin-review-campaign.dto';
 import slugify from 'slugify';
 
 @Injectable()
@@ -43,53 +50,69 @@ export class CampaignService {
     };
   }
 
-  async findAll(query: QueryCampaignDto) {
-    const { page = 1, limit = 10, search, category, featured } = query;
+  findAll(query: QueryCampaignDto) {
+    const { page, limit } = query;
+
+    const where = this.buildCampaignWhere(query, {
+      status: CampaignStatus.ACTIVE,
+    });
+
+    return this.paginateCampaign(where, page, limit);
+  }
+
+  myCampaign(query: QueryCampaignDto, userId: string) {
+    const { page, limit } = query;
+
+    const where = this.buildCampaignWhere(query, { userId });
+
+    return this.paginateCampaign(where, page, limit);
+  }
+
+  findAllAdmin(query: QueryCampaignDto) {
+    const { page, limit } = query;
+
+    const where = this.buildCampaignWhere(query);
+
+    return this.paginateCampaign(where, page, limit);
+  }
+
+  async findAllCampaignReviewHistory(query: QueryCampaignReviewDto) {
+    const { page, limit, search, status } = query;
 
     const skip = (page - 1) * limit;
 
-    const where: Prisma.CampaignWhereInput = {};
+    const where: Prisma.CampaignReviewWhereInput = {};
 
     if (search) {
       where.OR = [
         {
-          title: {
-            contains: search,
-            mode: 'insensitive',
-          },
-        },
-        {
-          shortDesc: {
-            contains: search,
-            mode: 'insensitive',
+          campaign: {
+            title: {
+              contains: search,
+              mode: 'insensitive',
+            },
           },
         },
       ];
     }
 
-    if (category) {
-      where.category = category;
+    if (status) {
+      where.status = status;
     }
 
-    if (featured) {
-      where.isFeatured = featured;
-    }
-
-    const [campaigns, total] = await Promise.all([
-      this.prisma.campaign.findMany({
+    const [campaignReviews, total] = await Promise.all([
+      this.prisma.campaignReview.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { reviewedAt: 'desc' },
       }),
-
-      this.prisma.campaign.count({
-        where,
-      }),
+      this.prisma.campaignReview.count({ where }),
     ]);
 
     return {
-      campaigns,
+      message: 'Berhasil mengambil data',
+      campaignReviews,
       pagination: buildPagination(page, limit, total),
     };
   }
@@ -97,6 +120,14 @@ export class CampaignService {
   async findOne(id: string) {
     const campaign = await this.prisma.campaign.findUnique({
       where: { id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+          },
+        },
+      },
     });
 
     if (!campaign) {
@@ -111,17 +142,9 @@ export class CampaignService {
     updateCampaignDto: UpdateCampaignDto,
     userId: string,
   ) {
-    const campaign = await this.prisma.campaign.findUnique({
-      where: { id },
-    });
+    const campaign = await this.getCampaign(id);
 
-    if (!campaign) {
-      throw new NotFoundException('Campaign tidak ditemukan');
-    }
-
-    if (campaign.userId !== userId) {
-      throw new ForbiddenException('Bukan pemilik Campaign');
-    }
+    this.validateCampaignOwner(campaign, userId);
 
     const updateCampaign = await this.prisma.campaign.update({
       where: { id },
@@ -134,14 +157,10 @@ export class CampaignService {
     };
   }
 
-  async remove(id: string) {
-    const campaign = await this.prisma.campaign.findUnique({
-      where: { id },
-    });
+  async remove(id: string, userId: string) {
+    const campaign = await this.getCampaign(id);
 
-    if (!campaign) {
-      throw new NotFoundException('Campaign tidak ditemukan');
-    }
+    this.validateCampaignOwner(campaign, userId);
 
     const deleteCampaign = await this.prisma.campaign.delete({
       where: { id },
@@ -151,5 +170,223 @@ export class CampaignService {
       message: 'Campaign berhasil dihapus',
       deleteCampaign,
     };
+  }
+
+  async submit(id: string, userId: string) {
+    const campaign = await this.getCampaign(id);
+
+    this.validateCampaignOwner(campaign, userId);
+
+    this.validateCampaignBeforeSubmit(campaign);
+
+    const submittedCampaign = await this.prisma.campaign.update({
+      where: { id },
+      data: {
+        status: CampaignStatus.PENDING_REVIEW,
+      },
+    });
+
+    return {
+      message: 'Campaign berhasil disubmit untuk review',
+      campaign: submittedCampaign,
+    };
+  }
+
+  pendingReviewList(query: QueryCampaignDto) {
+    const { page, limit } = query;
+    const where = this.buildCampaignWhere(query, {
+      status: CampaignStatus.PENDING_REVIEW,
+    });
+
+    return this.paginateCampaign(where, page, limit);
+  }
+
+  async reject(id: string, dto: RejectedCampaignDto, adminId: string) {
+    const campaign = await this.getCampaign(id);
+
+    const rejectCampaign = await this.prisma.$transaction([
+      this.prisma.campaign.update({
+        where: {
+          id: campaign.id,
+        },
+        data: {
+          status: CampaignStatus.REJECTED,
+          adminNote: dto.note,
+        },
+      }),
+
+      this.prisma.campaignReview.create({
+        data: {
+          campaignId: campaign.id,
+          adminId,
+          status: CampaignStatus.REJECTED,
+          note: dto.note,
+        },
+      }),
+    ]);
+
+    return {
+      message: 'Review Campaign Sudah Dibuat',
+      rejectCampaign,
+    };
+  }
+
+  async suspend(id: string, dto: RejectedCampaignDto, adminId: string) {
+    const campaign = await this.getCampaign(id);
+
+    const suspendCampaign = await this.prisma.$transaction([
+      this.prisma.campaign.update({
+        where: {
+          id: campaign.id,
+        },
+        data: {
+          status: CampaignStatus.SUSPENDED,
+          adminNote: dto.note,
+        },
+      }),
+
+      this.prisma.campaignReview.create({
+        data: {
+          campaignId: campaign.id,
+          adminId,
+          status: CampaignStatus.SUSPENDED,
+          note: dto.note,
+        },
+      }),
+    ]);
+
+    return {
+      message: 'Review Campaign Sudah Dibuat',
+      suspendCampaign,
+    };
+  }
+
+  async aprrove(id: string, adminId: string) {
+    const campaign = await this.getCampaign(id);
+
+    const approveCampaign = await this.prisma.$transaction([
+      this.prisma.campaign.update({
+        where: {
+          id: campaign.id,
+        },
+        data: {
+          status: CampaignStatus.ACTIVE,
+        },
+      }),
+
+      this.prisma.campaignReview.create({
+        data: {
+          campaignId: campaign.id,
+          adminId,
+          status: CampaignStatus.ACTIVE,
+        },
+      }),
+    ]);
+
+    return {
+      message: 'Review Campaign Sudah Dibuat',
+      approveCampaign,
+    };
+  }
+
+  private buildCampaignWhere(
+    query: QueryCampaignDto,
+    options?: {
+      status?: CampaignStatus;
+      userId?: string;
+    },
+  ): Prisma.CampaignWhereInput {
+    const where: Prisma.CampaignWhereInput = {};
+
+    if (options?.userId) {
+      where.userId = options.userId;
+    }
+
+    if (query.search) {
+      where.OR = [
+        {
+          title: {
+            contains: query.search,
+            mode: 'insensitive',
+          },
+        },
+        {
+          shortDesc: {
+            contains: query.search,
+            mode: 'insensitive',
+          },
+        },
+      ];
+    }
+
+    if (query.category) {
+      where.category = query.category;
+    }
+
+    if (query.featured !== undefined) {
+      where.isFeatured = query.featured;
+    }
+
+    if (options?.status) {
+      where.status = options.status;
+    }
+
+    return where;
+  }
+
+  private async paginateCampaign(
+    where: Prisma.CampaignWhereInput,
+    page: number,
+    limit: number,
+  ) {
+    const skip = (page - 1) * limit;
+
+    const [campaigns, total] = await Promise.all([
+      this.prisma.campaign.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+
+      this.prisma.campaign.count({
+        where,
+      }),
+    ]);
+
+    return {
+      campaigns,
+      pagination: buildPagination(page, limit, total),
+    };
+  }
+
+  private validateCampaignOwner(campaign: { userId: string }, userId: string) {
+    if (campaign.userId !== userId) {
+      throw new ForbiddenException('Bukan pemilik campaign');
+    }
+  }
+
+  private async getCampaign(campaignId: string) {
+    const campaign = await this.prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
+
+    if (!campaign) {
+      throw new NotFoundException('Campaign tidak ditemukan');
+    }
+
+    return campaign;
+  }
+
+  private validateCampaignBeforeSubmit(campaign: Campaign) {
+    if (campaign.status !== CampaignStatus.DRAFT) {
+      throw new BadRequestException('Hanya campaign draft yang dapat disubmit');
+    }
+
+    if (!campaign.deadlineAt) {
+      throw new BadRequestException('Tanggal berakhir campaign wajib diisi');
+    }
   }
 }
