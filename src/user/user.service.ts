@@ -8,6 +8,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { QueryGlobal } from '../common/dto/query.dto';
+import { buildPagination } from 'src/common/utils/pagination';
 
 @Injectable()
 export class UserService {
@@ -94,12 +95,7 @@ export class UserService {
     ]);
     return {
       user,
-      pagination: {
-        curentPage: page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      pagination: buildPagination(page, limit, total),
     };
   }
 

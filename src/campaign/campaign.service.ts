@@ -8,6 +8,7 @@ import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import { QueryCampaignDto } from './dto/query-campaign.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { buildPagination } from 'src/common/utils/pagination';
 import slugify from 'slugify';
 
 @Injectable()
@@ -56,6 +57,8 @@ export class CampaignService {
             contains: search,
             mode: 'insensitive',
           },
+        },
+        {
           shortDesc: {
             contains: search,
             mode: 'insensitive',
@@ -87,12 +90,7 @@ export class CampaignService {
 
     return {
       campaigns,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      pagination: buildPagination(page, limit, total),
     };
   }
 
