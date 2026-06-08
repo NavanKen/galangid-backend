@@ -8,6 +8,7 @@ import { UserModule } from './user/user.module';
 
 import { CampaignModule } from './campaign/campaign.module';
 import { DonationModule } from './donation/donation.module';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { DonationModule } from './donation/donation.module';
     UserModule,
     CampaignModule,
     DonationModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
