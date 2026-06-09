@@ -50,6 +50,13 @@ enum DonationStatus {
   REFUNDED
 }
 
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+}
+
 enum PaymentProvider {
   MIDTRANS
   XENDIT
@@ -380,7 +387,7 @@ model Payment {
   externalOrderId     String?         // order_id kita yang dikirim ke gateway
   amount              Decimal         @db.Decimal(15, 2)
   currency            String          @default("IDR")
-  status              DonationStatus  @default(PENDING)
+  status              PaymentStatus  @default(PENDING)
   paymentUrl          String?         // redirect URL untuk pembayaran
   expiresAt           DateTime?
   paidAt              DateTime?
