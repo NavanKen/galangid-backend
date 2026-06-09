@@ -6,6 +6,10 @@ const WebhookSchema = z.object({
   externalId: z.string(),
 
   status: z.nativeEnum(PaymentStatus),
+
+  failedReason: z.string().optional(),
+
+  rawResponse: z.record(z.string(), z.unknown()).optional(),
 });
 
 export class PaymentWebhookDto extends createZodDto(WebhookSchema) {}

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import {
+  Campaign,
   Donation,
   DonationStatus,
   Payment,
@@ -14,9 +15,16 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { randomUUID } from 'crypto';
 import { PaymentWebhookDto } from './dto/webhook-schema.dto';
+import { Prisma } from '@prisma/client';
 
 type DonationWithPayment = Donation & {
   payment: Payment | null;
+};
+
+type PaymentWithDonation = Payment & {
+  donation: Donation & {
+    campaign: Campaign;
+  };
 };
 
 @Injectable()
@@ -62,36 +70,28 @@ export class PaymentService {
   }
 
   async webHook(payload: PaymentWebhookDto) {
-    const payment = await this.prisma.payment.findUnique({
-      where: {
-        externalId: payload.externalId,
-      },
+    const payment = await this.getPaymentByExternalId(payload.externalId);
 
-      include: {
-        donation: true,
-      },
-    });
-
-    if (!payment) {
-      throw new NotFoundException('Payment tidak ditemukan');
+    if (
+      payment.status === PaymentStatus.PAID &&
+      payload.status === PaymentStatus.PAID
+    ) {
+      return {
+        message: 'Payment sudah diproses sebelumnya',
+      };
     }
 
-    await this.prisma.payment.update({
-      where: {
-        id: payment.id,
-      },
-
-      data: {
-        status: payload.status,
-        paidAt: payload.status === PaymentStatus.PAID ? new Date() : null,
-      },
-    });
+    await this.processPaymentStatus(
+      payment,
+      payload.status,
+      payload.failedReason,
+      payload.rawResponse as Prisma.InputJsonValue,
+    );
 
     return {
       message: 'Webhook berhasil diproses',
     };
   }
-
   private async getDonation(donationId: string) {
     const donation = await this.prisma.donation.findUnique({
       where: {
@@ -140,6 +140,99 @@ export class PaymentService {
 
         status: PaymentStatus.PENDING,
       },
+    });
+  }
+
+  private async getPaymentByExternalId(externalId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: {
+        externalId,
+      },
+
+      include: {
+        donation: {
+          include: {
+            campaign: true,
+          },
+        },
+      },
+    });
+
+    if (!payment) {
+      throw new NotFoundException('Payment tidak ditemukan');
+    }
+
+    return payment;
+  }
+
+  private mapDonationStatus(paymentStatus: PaymentStatus): DonationStatus {
+    switch (paymentStatus) {
+      case PaymentStatus.PAID:
+        return DonationStatus.PAID;
+
+      case PaymentStatus.FAILED:
+        return DonationStatus.FAILED;
+
+      case PaymentStatus.EXPIRED:
+        return DonationStatus.EXPIRED;
+
+      default:
+        return DonationStatus.PENDING;
+    }
+  }
+
+  private async processPaymentStatus(
+    payment: PaymentWithDonation,
+    paymentStatus: PaymentStatus,
+    failedReason?: string,
+    rawResponse?: Prisma.InputJsonValue,
+  ) {
+    const donationStatus = this.mapDonationStatus(paymentStatus);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payment.update({
+        where: {
+          id: payment.id,
+        },
+
+        data: {
+          status: paymentStatus,
+
+          paidAt: paymentStatus === PaymentStatus.PAID ? new Date() : null,
+
+          failedReason,
+
+          rawResponse,
+        },
+      });
+
+      await tx.donation.update({
+        where: {
+          id: payment.donationId,
+        },
+
+        data: {
+          status: donationStatus,
+        },
+      });
+
+      if (paymentStatus === PaymentStatus.PAID) {
+        await tx.campaign.update({
+          where: {
+            id: payment.donation.campaignId,
+          },
+
+          data: {
+            currentAmount: {
+              increment: payment.donation.netAmount,
+            },
+
+            donorCount: {
+              increment: 1,
+            },
+          },
+        });
+      }
     });
   }
 
