@@ -13,9 +13,11 @@ import {
   PaymentStatus,
 } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { randomUUID } from 'crypto';
+
 import { PaymentWebhookDto } from './dto/webhook-schema.dto';
+import { PaymentGatewayFactory } from './gateways/payment-gateway.factory';
 import { Prisma } from '@prisma/client';
+import { CreateGatewayPaymentResponse } from './gateways/payment-gateway.interface';
 
 type DonationWithPayment = Donation & {
   payment: Payment | null;
@@ -36,9 +38,16 @@ export class PaymentService {
 
     this.validateDonation(donation);
 
+    const gateway = PaymentGatewayFactory.create(createPaymentDto.provider);
+
+    const gatewayResponse = await gateway.createPayment(
+      Number(donation.amount),
+    );
+
     const payment = await this.createPaymentRecord(
       donation,
       createPaymentDto.provider,
+      gatewayResponse,
     );
 
     return {
@@ -125,6 +134,7 @@ export class PaymentService {
   private async createPaymentRecord(
     donation: DonationWithPayment,
     provider: PaymentProvider,
+    gatewayResponse: CreateGatewayPaymentResponse,
   ) {
     return this.prisma.payment.create({
       data: {
@@ -134,7 +144,9 @@ export class PaymentService {
 
         amount: donation.amount,
 
-        externalId: randomUUID(),
+        externalId: gatewayResponse.externalId,
+
+        paymentUrl: gatewayResponse.paymentUrl,
 
         externalOrderId: this.generateOrderId(),
 

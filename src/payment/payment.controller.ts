@@ -5,7 +5,7 @@ import { PaymentWebhookDto } from './dto/webhook-schema.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { role } from 'src/common/config/role.config';
 
-@Controller('payment')
+@Controller('payments')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
