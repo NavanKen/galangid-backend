@@ -1,9 +1,15 @@
+export interface CreateGatewayPaymentDto {
+  orderId: string;
+  amount: number;
+}
+
 export interface CreateGatewayPaymentResponse {
   externalId: string;
-  paymentUrl: string;
-  expiresAt?: Date;
+  paymentUrl?: string;
 }
 
 export interface PaymentGateway {
-  createPayment(amount: number): Promise<CreateGatewayPaymentResponse>;
+  createPayment(
+    payload: CreateGatewayPaymentDto,
+  ): Promise<CreateGatewayPaymentResponse>;
 }

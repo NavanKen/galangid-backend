@@ -1,10 +1,13 @@
 import {
-  PaymentGateway,
+  CreateGatewayPaymentDto,
   CreateGatewayPaymentResponse,
+  PaymentGateway,
 } from '../payment-gateway.interface';
 
 export class XenditGateway implements PaymentGateway {
-  async createPayment(amount: number): Promise<CreateGatewayPaymentResponse> {
+  async createPayment(
+    payload: CreateGatewayPaymentDto,
+  ): Promise<CreateGatewayPaymentResponse> {
     return {
       externalId: crypto.randomUUID(),
       paymentUrl: 'https://xendit-sandbox.com/pay',

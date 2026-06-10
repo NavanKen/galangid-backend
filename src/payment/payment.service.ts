@@ -40,9 +40,10 @@ export class PaymentService {
 
     const gateway = PaymentGatewayFactory.create(createPaymentDto.provider);
 
-    const gatewayResponse = await gateway.createPayment(
-      Number(donation.amount),
-    );
+    const gatewayResponse = await gateway.createPayment({
+      orderId: this.generateOrderId(),
+      amount: Number(donation.amount),
+    });
 
     const payment = await this.createPaymentRecord(
       donation,
