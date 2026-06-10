@@ -6,6 +6,7 @@ export interface CreateGatewayPaymentDto {
 export interface CreateGatewayPaymentResponse {
   externalId: string;
   paymentUrl?: string;
+  paymentDetail?: unknown;
 }
 
 export interface PaymentGateway {

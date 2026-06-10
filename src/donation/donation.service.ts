@@ -10,7 +10,7 @@ import {
   AdminQueryDonationDto,
   QueryDonationDto,
 } from './dto/query-donation.dto';
-import { buildPagination } from 'src/common/utils/pagination';
+import { buildPagination } from '../common/utils/pagination';
 
 @Injectable()
 export class DonationService {

@@ -22,7 +22,6 @@ export class PaymentController {
   }
 
   @Post('webhook')
-  @Auth(role.donor, role.donor)
   webhook(@Body() payload: PaymentWebhookDto) {
     return this.paymentService.webHook(payload);
   }

@@ -12,7 +12,7 @@ import {
 } from './dto/query-campaign.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
-import { buildPagination } from 'src/common/utils/pagination';
+import { buildPagination } from '../common/utils/pagination';
 import { Campaign } from '@prisma/client';
 import { CampaignStatus } from '@prisma/client';
 import { RejectedCampaignDto } from './dto/admin-review-campaign.dto';

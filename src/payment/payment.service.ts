@@ -54,6 +54,7 @@ export class PaymentService {
     return {
       message: 'Payment berhasil dibuat',
       payment,
+      paymentDetail: gatewayResponse.paymentDetail,
     };
   }
 
@@ -102,6 +103,7 @@ export class PaymentService {
       message: 'Webhook berhasil diproses',
     };
   }
+
   private async getDonation(donationId: string) {
     const donation = await this.prisma.donation.findUnique({
       where: {
@@ -251,5 +253,24 @@ export class PaymentService {
 
   private generateOrderId() {
     return `DON-${Date.now()}`;
+  }
+
+  private mapMidtransStatus(transactionStatus: string): PaymentStatus {
+    switch (transactionStatus) {
+      case 'settlement':
+      case 'capture':
+        return PaymentStatus.PAID;
+
+      case 'expire':
+        return PaymentStatus.EXPIRED;
+
+      case 'cancel':
+      case 'deny':
+      case 'failure':
+        return PaymentStatus.FAILED;
+
+      default:
+        return PaymentStatus.PENDING;
+    }
   }
 }

@@ -49,6 +49,7 @@ export class MidtransGateway implements PaymentGateway {
       paymentUrl: data.actions?.find(
         (action: { name: string }) => action.name === 'deeplink-redirect',
       )?.url,
+      paymentDetail: data.actions,
     };
   }
 }
