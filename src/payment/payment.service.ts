@@ -14,7 +14,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 
-import { PaymentWebhookDto } from './dto/webhook-schema.dto';
 import { PaymentGatewayFactory } from './gateways/payment-gateway.factory';
 import { Prisma } from '@prisma/client';
 import { CreateGatewayPaymentResponse } from './gateways/payment-gateway.interface';
@@ -80,12 +79,16 @@ export class PaymentService {
     return payment;
   }
 
-  async webHook(payload: PaymentWebhookDto) {
-    const payment = await this.getPaymentByExternalId(payload.externalId);
+  async webHook(provider: PaymentProvider, payload: unknown) {
+    const gateway = PaymentGatewayFactory.create(provider);
+
+    const webHook = gateway.parseWebhook(payload);
+
+    const payment = await this.getPaymentByExternalId(webHook.externalId);
 
     if (
       payment.status === PaymentStatus.PAID &&
-      payload.status === PaymentStatus.PAID
+      webHook.status === PaymentStatus.PAID
     ) {
       return {
         message: 'Payment sudah diproses sebelumnya',
@@ -94,13 +97,13 @@ export class PaymentService {
 
     await this.processPaymentStatus(
       payment,
-      payload.status,
-      payload.failedReason,
-      payload.rawResponse as Prisma.InputJsonValue,
+      webHook.status,
+      webHook.failedReason,
+      webHook.rawResponse as Prisma.InputJsonValue,
     );
 
     return {
-      message: 'Webhook berhasil diproses',
+      messagge: 'Webhook berhasil dibuat',
     };
   }
 
@@ -253,24 +256,5 @@ export class PaymentService {
 
   private generateOrderId() {
     return `DON-${Date.now()}`;
-  }
-
-  private mapMidtransStatus(transactionStatus: string): PaymentStatus {
-    switch (transactionStatus) {
-      case 'settlement':
-      case 'capture':
-        return PaymentStatus.PAID;
-
-      case 'expire':
-        return PaymentStatus.EXPIRED;
-
-      case 'cancel':
-      case 'deny':
-      case 'failure':
-        return PaymentStatus.FAILED;
-
-      default:
-        return PaymentStatus.PENDING;
-    }
   }
 }

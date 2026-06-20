@@ -4,15 +4,33 @@ import {
   CreateGatewayPaymentResponse,
   PaymentGateway,
 } from '../payment-gateway.interface';
-import { XenditWebHookDto } from 'src/payment/dto/webhook-schema.dto';
+import { PaymentStatus } from '@prisma/client';
 
 export class XenditGateway implements PaymentGateway {
-  parseWebhook(payload: XenditWebHookDto): GatewayWebhookResult {
+  private mapStatus(status: string): PaymentStatus {
+    switch (status) {
+      case 'SUCCEEDED':
+        return PaymentStatus.PAID;
+
+      case 'FAILED':
+        return PaymentStatus.FAILED;
+
+      case 'EXPIRED':
+        return PaymentStatus.EXPIRED;
+
+      default:
+        return PaymentStatus.PENDING;
+    }
+  }
+  parseWebhook(payload: unknown): GatewayWebhookResult {
+    const data = payload as {
+      id: string;
+      status: string;
+    };
+
     return {
-      externalId: payload.transaction_id,
-
-      status: 'EXPIRED',
-
+      externalId: data.id,
+      status: this.mapStatus(data.status),
       rawResponse: payload,
     };
   }

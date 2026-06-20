@@ -4,6 +4,7 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { PaymentWebhookDto } from './dto/webhook-schema.dto';
 import { Auth } from 'src/auth/decorators/auth.decorator';
 import { role } from 'src/common/config/role.config';
+import { PaymentProvider } from '@prisma/client';
 
 @Controller('payments')
 export class PaymentController {
@@ -21,8 +22,11 @@ export class PaymentController {
     return this.paymentService.findOne(id);
   }
 
-  @Post('webhook')
-  webhook(@Body() payload: PaymentWebhookDto) {
-    return this.paymentService.webHook(payload);
+  @Post('webhook/:provider')
+  webhook(
+    @Param('provider') provider: PaymentProvider,
+    @Body() payload: PaymentWebhookDto,
+  ) {
+    return this.paymentService.webHook(provider, payload);
   }
 }

@@ -4,6 +4,8 @@ import {
   PaymentGateway,
 } from '../payment-gateway.interface';
 import axios from 'axios';
+import { PaymentStatus } from '@prisma/client';
+import { GatewayWebhookResult } from '../payment-gateway.interface';
 
 type MidtransAction = {
   name: string;
@@ -22,6 +24,38 @@ export class MidtransGateway implements PaymentGateway {
     );
 
     return `Basic ${auth}`;
+  }
+
+  private mapStatus(status: string): PaymentStatus {
+    switch (status) {
+      case 'settlement':
+      case 'capture':
+        return PaymentStatus.PAID;
+
+      case 'expire':
+        return PaymentStatus.EXPIRED;
+
+      case 'deny':
+      case 'cancel':
+      case 'failure':
+        return PaymentStatus.FAILED;
+
+      default:
+        return PaymentStatus.PENDING;
+    }
+  }
+
+  parseWebhook(payload: unknown): GatewayWebhookResult {
+    const data = payload as {
+      transaction_id: string;
+      transaction_status: string;
+    };
+
+    return {
+      externalId: data.transaction_id,
+      status: this.mapStatus(data.transaction_status),
+      rawResponse: payload,
+    };
   }
 
   async createPayment(
