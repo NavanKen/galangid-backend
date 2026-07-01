@@ -138,7 +138,7 @@ JWT_REFRESH_EXPIRES_IN=7d
 AI_SERVICE_API=http://localhost:8000
 
 
-MIDTRANS
+# MIDTRANS
 MIDTRANS_BASE_URL="https://api.sandbox.midtrans.com/v2/charge"
 MIDTRANS_SERVER_KEY="your_midtrans_server_key"
 MIDTRANS_CLIENT_KEY="your_midtrans_client_key_key"
