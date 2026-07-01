@@ -110,7 +110,7 @@ backend/
 ### Clone Repository
 
 ```bash
-git clone https://github.com/username/galangid-backend.git
+git clone https://github.com/NavanKen/galangid-backend.git
 cd galangid-backend
 ```
 
