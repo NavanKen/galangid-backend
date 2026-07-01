@@ -17,7 +17,7 @@ import { buildPagination } from '../common/utils/pagination';
 import { Campaign } from '@prisma/client';
 import { CampaignStatus, AiModerationStatus } from '@prisma/client';
 import { RejectedCampaignDto } from './dto/admin-review-campaign.dto';
-import { AiModerationService } from 'src/ai-moderation/ai-moderation.service';
+import { AiModerationService } from '../ai-moderation/ai-moderation.service';
 import slugify from 'slugify';
 
 @Injectable()

@@ -5,7 +5,6 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { UserModule } from './user/user.module';
-
 import { CampaignModule } from './campaign/campaign.module';
 import { DonationModule } from './donation/donation.module';
 import { PaymentModule } from './payment/payment.module';
