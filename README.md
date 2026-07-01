@@ -129,13 +129,20 @@ Buat file `.env` di root project:
 DATABASE_URL=postgresql://user:password@localhost:5432/galangid
 
 # JWT
-JWT_SECRET=your_jwt_secret_here
+JWT_ACCESS_SECRET=your_jwt_secret_here
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_SECRET=your_refresh_secret_here
 JWT_REFRESH_EXPIRES_IN=7d
 
 # AI Moderation Service
 AI_SERVICE_API=http://localhost:8000
+
+
+MIDTRANS
+MIDTRANS_BASE_URL="https://api.sandbox.midtrans.com/v2/charge"
+MIDTRANS_SERVER_KEY="your_midtrans_server_key"
+MIDTRANS_CLIENT_KEY="your_midtrans_client_key_key"
+MIDTRANS_IS_PRODUCTION=false
 ```
 
 ### Database Setup
