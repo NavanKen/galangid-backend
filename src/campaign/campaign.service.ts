@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
@@ -14,13 +15,19 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { buildPagination } from '../common/utils/pagination';
 import { Campaign } from '@prisma/client';
-import { CampaignStatus } from '@prisma/client';
+import { CampaignStatus, AiModerationStatus } from '@prisma/client';
 import { RejectedCampaignDto } from './dto/admin-review-campaign.dto';
+import { AiModerationService } from 'src/ai-moderation/ai-moderation.service';
 import slugify from 'slugify';
 
 @Injectable()
 export class CampaignService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(CampaignService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly aiModerationService: AiModerationService,
+  ) {}
 
   async create(createCampaignDto: CreateCampaignDto, userId: string) {
     const slug = slugify(createCampaignDto.title, {
@@ -73,7 +80,9 @@ export class CampaignService {
 
     const where = this.buildCampaignWhere(query);
 
-    return this.paginateCampaign(where, page, limit);
+    return this.paginateCampaign(where, page, limit, {
+      includeAiModeration: true,
+    });
   }
 
   async findAllCampaignReviewHistory(query: QueryCampaignReviewDto) {
@@ -127,6 +136,7 @@ export class CampaignService {
             email: true,
           },
         },
+        aiModeration: true,
       },
     });
 
@@ -179,16 +189,87 @@ export class CampaignService {
 
     this.validateCampaignBeforeSubmit(campaign);
 
-    const submittedCampaign = await this.prisma.campaign.update({
-      where: { id },
-      data: {
-        status: CampaignStatus.PENDING_REVIEW,
-      },
+    const aiResponse = await this.aiModerationService.analyzeCampaign({
+      title: campaign.title,
+      description: campaign.description,
+      goal_amount: campaign.targetAmount
+        ? Number(campaign.targetAmount)
+        : undefined,
+      category: campaign.category ?? undefined,
     });
 
+    const decision = this.aiModerationService.determineDecision(
+      aiResponse.risk_score,
+    );
+
+    const campaignStatusMap: Record<AiModerationStatus, CampaignStatus> = {
+      [AiModerationStatus.AUTO_APPROVED]: CampaignStatus.ACTIVE,
+      [AiModerationStatus.PENDING_REVIEW]: CampaignStatus.PENDING_REVIEW,
+      [AiModerationStatus.REJECTED]: CampaignStatus.PENDING_REVIEW,
+    };
+
+    const newStatus = campaignStatusMap[decision];
+
+    this.logger.log(
+      `Campaign "${campaign.title}" — AI risk_score: ${aiResponse.risk_score}, decision: ${decision}, status: ${newStatus}`,
+    );
+
+    const [updatedCampaign, aiModeration] = await this.prisma.$transaction([
+      this.prisma.campaign.update({
+        where: { id },
+        data: {
+          status: newStatus,
+          publishedAt:
+            newStatus === CampaignStatus.ACTIVE ? new Date() : undefined,
+        },
+      }),
+
+      this.prisma.aiModeration.upsert({
+        where: { campaignId: id },
+        create: {
+          campaignId: id,
+          riskScore: aiResponse.risk_score,
+          aiApproved: aiResponse.approved,
+          category: aiResponse.category,
+          summary: aiResponse.summary,
+          reason: aiResponse.reason,
+          scamIndicators: aiResponse.scam_indicators,
+          suggestions: aiResponse.suggestions,
+          decision,
+        },
+        update: {
+          riskScore: aiResponse.risk_score,
+          aiApproved: aiResponse.approved,
+          category: aiResponse.category,
+          summary: aiResponse.summary,
+          reason: aiResponse.reason,
+          scamIndicators: aiResponse.scam_indicators,
+          suggestions: aiResponse.suggestions,
+          decision,
+          analyzedAt: new Date(),
+        },
+      }),
+    ]);
+
+    const statusMessages: Record<AiModerationStatus, string> = {
+      [AiModerationStatus.AUTO_APPROVED]:
+        'Campaign Anda berhasil dipublikasikan!',
+      [AiModerationStatus.PENDING_REVIEW]:
+        'Campaign Anda sedang dalam proses review oleh admin.',
+      [AiModerationStatus.REJECTED]:
+        'Campaign Anda memerlukan review manual oleh admin sebelum dapat dipublikasikan.',
+    };
+
     return {
-      message: 'Campaign berhasil disubmit untuk review',
-      campaign: submittedCampaign,
+      message: statusMessages[decision],
+      campaign: updatedCampaign,
+      aiReview: {
+        riskScore: aiModeration.riskScore,
+        category: aiModeration.category,
+        summary: aiModeration.summary,
+        suggestions: aiModeration.suggestions,
+        decision: aiModeration.decision,
+      },
     };
   }
 
@@ -198,7 +279,9 @@ export class CampaignService {
       status: CampaignStatus.PENDING_REVIEW,
     });
 
-    return this.paginateCampaign(where, page, limit);
+    return this.paginateCampaign(where, page, limit, {
+      includeAiModeration: true,
+    });
   }
 
   async reject(id: string, dto: RejectedCampaignDto, adminId: string) {
@@ -338,6 +421,7 @@ export class CampaignService {
     where: Prisma.CampaignWhereInput,
     page: number,
     limit: number,
+    options?: { includeAiModeration?: boolean },
   ) {
     const skip = (page - 1) * limit;
 
@@ -349,6 +433,9 @@ export class CampaignService {
         orderBy: {
           createdAt: 'desc',
         },
+        include: options?.includeAiModeration
+          ? { aiModeration: true }
+          : undefined,
       }),
 
       this.prisma.campaign.count({

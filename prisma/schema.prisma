@@ -31,6 +31,12 @@ enum CampaignStatus {
   SUSPENDED
 }
 
+enum AiModerationStatus {
+  AUTO_APPROVED
+  PENDING_REVIEW
+  REJECTED
+}
+
 enum CampaignCategory {
   KESEHATAN
   PENDIDIKAN
@@ -241,6 +247,7 @@ model Campaign {
   milestones      CampaignMilestone[]
   tags            CampaignTag[]
   reviews         CampaignReview[]
+  aiModeration    AiModeration?
 
   @@index([status])
   @@index([category])
@@ -347,6 +354,27 @@ model CampaignReview {
   campaign    Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@map("campaign_reviews")
+}
+
+// AI Moderation — hasil analisis AI saat campaign di-submit
+model AiModeration {
+  id              String             @id @default(cuid())
+  campaignId      String             @unique
+  riskScore       Int                // 0-100
+  aiApproved      Boolean            // approved dari AI
+  category        String             // Kategori hasil analisis AI
+  summary         String             @db.Text
+  reason          String             @db.Text
+  scamIndicators  Json               @default("[]") // string[]
+  suggestions     Json               @default("[]") // string[]
+  decision        AiModerationStatus // keputusan bisnis NestJS
+  analyzedAt      DateTime           @default(now())
+
+  campaign        Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([decision])
+  @@index([riskScore])
+  @@map("ai_moderations")
 }
 
 // ==============================================================
