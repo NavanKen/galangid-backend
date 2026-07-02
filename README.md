@@ -20,7 +20,7 @@ Backend ini menangani seluruh business logic platform donasi, termasuk autentika
 - 🤖 **AI Moderation Integration** — analisis campaign otomatis via FastAPI AI service
 - 💰 **Donation System** — donasi dengan berbagai metode pembayaran
 - 💳 **Payment Gateway** — integrasi Midtrans
-- 👤 **User Management** — profil, verifikasi KTP, role-based access
+- 👤 **User Management** — profil, role-based access
 - 📊 **Admin Dashboard API** — manajemen platform oleh admin
 - ✅ **Input Validation** — Zod schema validation via `nestjs-zod`
 
